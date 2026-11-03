@@ -85,3 +85,4 @@ The DevSecOps Reviewer conducted a comprehensive pre-merge audit on the proposed
 -  ssl_policy        = "ELBSecurityPolicy-2016-08"
 +  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
 ```
+

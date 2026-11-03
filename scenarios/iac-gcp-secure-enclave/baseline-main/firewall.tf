@@ -9,3 +9,4 @@ resource "google_compute_firewall" "allow_internal_enclave" {
 
   source_ranges = ["10.10.0.0/20", "10.20.0.0/16"]
 }
+

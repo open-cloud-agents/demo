@@ -10,3 +10,4 @@ resource "azurerm_storage_account" "core_storage" {
   public_network_access_enabled   = false
   allow_nested_items_to_be_public = false
 }
+

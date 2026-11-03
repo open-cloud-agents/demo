@@ -15,3 +15,4 @@ variable "network_name" {
   type        = string
   default     = "vpc-secure-enclave"
 }
+

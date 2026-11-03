@@ -33,6 +33,10 @@ Choose from the interactive menu:
   [5] 🚀 Run Full Multi-Cloud Audit Suite
 ```
 
+<p align="center">
+  <img src="./docs/images/ocagents-sandbox-demo.svg" alt="KinD Ephemeral Sandbox Drill Animation" width="100%" />
+</p>
+
 ---
 
 ## 🔬 Scenario Catalog

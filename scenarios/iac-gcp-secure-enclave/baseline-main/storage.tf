@@ -12,3 +12,4 @@ resource "google_storage_bucket" "audit_vault" {
     retention_period = 2592000 # 30 days
   }
 }
+
