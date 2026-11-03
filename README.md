@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./docs/images/logo-concept-v2-shield.jpg" alt="Open Cloud Agents Logo" width="160" style="border-radius: 24px;" />
+</p>
+
 # 🚀 Open Cloud Agents: Live-Fire Incident & Multi-Cloud IaC Sandbox
 
 [![KinD CI Matrix](https://github.com/open-cloud-agents/demo/actions/workflows/kind-matrix.yml/badge.svg)](https://github.com/open-cloud-agents/demo/actions/workflows/kind-matrix.yml)
