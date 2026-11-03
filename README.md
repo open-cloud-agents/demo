@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./docs/images/logo-concept-v2-shield.jpg" alt="Open Cloud Agents Logo" width="160" style="border-radius: 24px;" />
+  <img src="./docs/images/logo.svg" alt="Open Cloud Agents Logo" width="160" />
 </p>
 
 # 🚀 Open Cloud Agents: Live-Fire Incident & Multi-Cloud IaC Sandbox
