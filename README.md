@@ -1,4 +1,4 @@
-# 🚀 Open Cloud Agents: Live-Fire Incident & Triage Sandbox
+# 🚀 Open Cloud Agents: Live-Fire Incident & Multi-Cloud IaC Sandbox
 
 [![KinD CI Matrix](https://github.com/open-cloud-agents/demo/actions/workflows/kind-matrix.yml/badge.svg)](https://github.com/open-cloud-agents/demo/actions/workflows/kind-matrix.yml)
 [![Cloud Guardrails](https://github.com/open-cloud-agents/demo/actions/workflows/guardrails.yml/badge.svg)](https://github.com/open-cloud-agents/demo/actions/workflows/guardrails.yml)
@@ -7,13 +7,13 @@
 
 Welcome to the official **interactive demo sandbox** for [Open Cloud Agents](https://github.com/open-cloud-agents/ocagents). 
 
-This repository allows platform engineers, SREs, and cloud architects to experience **autonomous multi-agent incident triage and remediation** live on real Kubernetes clusters without modifying production systems.
+This repository allows platform engineers, SREs, and cloud architects to experience **autonomous multi-agent incident triage and multi-cloud IaC PR audits** live on Kubernetes (KinD) and Terraform across **AWS, GCP, and Azure** without modifying live production systems.
 
 ---
 
-## ⚡ 60-Second Fast Track (Interactive Drill)
+## ⚡ 60-Second Fast Track (Interactive Menu)
 
-You don't need cloud credentials or a remote cluster. All you need is **Docker** and **KinD**.
+You don't need cloud credentials or a remote cluster. All you need is **Docker** and local tools.
 
 ```bash
 # 1. Clone this demo repository:
@@ -24,66 +24,78 @@ cd demo
 ./run-demo.sh
 ```
 
-The script will automatically:
-1. Boot an ephemeral multi-node Kubernetes cluster via KinD.
-2. Deploy a deliberately broken multi-service payment workload into namespace `demo-billing`.
-3. Highlight active failures (`OOMKilled`, `CrashLoopBackOff`, and `502 Bad Gateway`).
-4. Guide you through agent triage and apply the verified solution patch.
-5. Tear down the cluster cleanly with zero host residue.
+Choose from the interactive menu:
+```text
+  [1] ☸️  Kubernetes Outage Drill (KinD): SEV-2 Billing Pods (OOMKilled, 502, CrashLoop)
+  [2] 🟧 AWS IaC PR Review: Pricing API Estate (ECS, ALB, RDS, Direct Ingress Bypass)
+  [3] 🟦 GCP IaC PR Review: Secure Enclave (Cloud SQL Public IP, Ingress 0.0.0.0/0)
+  [4] 🔷 Azure IaC PR Review: Enterprise Hub-Spoke (Storage State Destruction, NSG)
+  [5] 🚀 Run Full Multi-Cloud Audit Suite
+```
 
 ---
 
-## 🔬 Featured Incident Drill: SEV-2 Billing Outage
+## 🔬 Scenario Catalog
 
-This scenario simulates a production cascade failure across three microservices in `demo-billing`, mapped directly to our **25-Point Kubernetes Production Failure Matrix**:
+### 1. ☸️ Kubernetes SEV-2 Billing Outage Drill ([`scenarios/billing-service-outage/`](scenarios/billing-service-outage/))
+* **Platform:** Kubernetes on KinD (Ephemerally provisioned)
+* **The Failure:** A multi-service payment outage with HTTP 502 Bad Gateway responses.
+* **The Invariants:**
+  * `billing-cache`: **State 02** - `OOMKilled (Exit Code 137)` (Heap allocates 30MiB against 16MiB cgroup limit).
+  * `billing-worker`: **State 09** - `CreateContainerConfigError` (Missing ConfigMap `billing-worker-config`).
+  * `billing-api-service`: **State 17** - `Service has no endpoints` (Mismatched label selector `app: billing-api-v2`).
 
-```
-                              [ Ingress Controller ]
-                                         │
-                                   HTTP 502 (Empty)
-                                         ▼
-                             [ billing-api-service ]
-                           (Mismatched Label Selector)
-                                    ✖       ✖
-                   ┌────────────────┴───────┴────────────────┐
-                   ▼                                         ▼
-          [ billing-cache ]                         [ billing-worker ]
-      (OOMKilled - Exit Code 137)               (CreateContainerConfigError)
-    Heap: 30MiB | Cgroup Limit: 16MiB            Missing 'billing-worker-config'
-```
+---
 
-### The 3 Injected Failure States:
+### 2. 🟧 AWS IaC: Pricing API Estate PR Review ([`scenarios/iac-aws-pricing-api/`](scenarios/iac-aws-pricing-api/))
+* **Platform:** AWS (ECS Fargate, ALB, RDS PostgreSQL, VPC, Route 53, LocalStack)
+* **The PR:** Developer branch `pr-feature-https-listener` intending to add HTTPS listener and redirect HTTP.
+* **DevSecOps Reviewer Findings:**
+  * 🔴 **CRITICAL (Perimeter Bypass):** Security group rule `api_task_inbound_https` exposes Fargate containers to `0.0.0.0/0:443`, bypassing the ALB.
+  * 🔴 **HIGH (Insecure TLS):** `ssl_policy = "ELBSecurityPolicy-2016-08"` permits deprecated TLS 1.0/1.1 protocols.
+  * 🔴 **HIGH (Audit Loss):** Deletion of `s3.tf` destroys the access logging bucket while health check logging remains enabled.
+* **Local Simulation:** Compatible with LocalStack (`scenarios/iac-aws-pricing-api/localstack/docker-compose.yml`).
 
-| Microservice | Failure State | Matrix Code | Root Cause & Diagnostics |
-|---|---|---|---|
-| **`billing-api-svc`** | `Service has no endpoints` | **State 17** | Service selector `app: billing-api-v2` mismatches pod label `app: billing-api`. Ingress yields `HTTP 502 Bad Gateway`. |
-| **`billing-cache`** | `OOMKilled (Exit Code 137)` | **State 02** | Workload allocates 30MiB while container memory limit is capped at 16MiB, triggering cgroup SIGKILL. |
-| **`billing-worker`** | `CreateContainerConfigError` | **State 09** | Pod references environment variable `BATCH_SIZE` from non-existent ConfigMap `billing-worker-config`. |
+---
+
+### 3. 🟦 GCP IaC: Secure Enclave & Private Cloud SQL ([`scenarios/iac-gcp-secure-enclave/`](scenarios/iac-gcp-secure-enclave/))
+* **Platform:** Google Cloud Platform (VPC, Cloud NAT, Cloud SQL PostgreSQL, Cloud Storage)
+* **The PR:** Developer branch `pr-developer-fast-track` adding remote debugging connectivity.
+* **DevSecOps Reviewer Findings:**
+  * 🔴 **CRITICAL (Firewall Exposure):** Firewall rule `fw-enclave-allow-public-debug` allows inbound `0.0.0.0/0` on PostgreSQL (5432) and SSH (22).
+  * 🔴 **CRITICAL (Cloud SQL Public IP):** `ipv4_enabled = true` with authorized networks `0.0.0.0/0` and weak SSL mode.
+  * 🔴 **HIGH (Public Data Exfiltration):** Cloud Storage bucket grants `roles/storage.objectViewer` to `allUsers`.
+
+---
+
+### 4. 🔷 Azure IaC: Enterprise Hub-Spoke & Flexible PostgreSQL ([`scenarios/iac-azure-enterprise-hub-spoke/`](scenarios/iac-azure-enterprise-hub-spoke/))
+* **Platform:** Microsoft Azure (Hub VNet, Delegated Subnets, PostgreSQL Flexible Server, Storage)
+* **The PR:** Developer branch `pr-developer-hotfix` connecting monitoring tools.
+* **DevSecOps Reviewer Findings:**
+  * 🔴 **CRITICAL (State Destruction Trap):** Renaming `storage_account_name` from `stpricingprodeu2` to `stpricingprodeu2v2` triggers `forces replacement`, permanently destroying the storage account and all blobs!
+  * 🔴 **CRITICAL (NSG Management Bypass):** NSG rule allows `SourceAddressPrefix = "0.0.0.0/0"` to ports `3389` (RDP) and `22` (SSH).
+  * 🔴 **HIGH (Public Endpoint Exposure):** `public_network_access_enabled = true` on the Flexible PostgreSQL database.
 
 ---
 
 ## 🤖 Running Autonomous Agent Triage
 
-If you have the [`ocagents`](https://github.com/open-cloud-agents/ocagents) CLI installed:
+Use the [`ocagents`](https://github.com/open-cloud-agents/ocagents) CLI:
 
 ```bash
-# 1. Boot the scenario into a dedicated KinD sandbox:
+# 1. Run Kubernetes Incident Triage in KinD:
 ocagents sandbox --scenario scenarios/billing-service-outage/ --keep-cluster
-
-# 2. Trigger the autonomous SRE triage pipeline:
 ocagents run --task "Diagnose and resolve all failing pods and ingress 502s in namespace demo-billing"
-```
 
-### What happens behind the scenes:
-1. **SRE Reliability Engineer Persona:**
-   - Detects `Exit Code 137` and references `skills/devops/kubernetes/k8s-pod-troubleshooting`.
-   - Identifies container memory limits vs. heap allocation.
-   - Diagnoses empty endpoints on `billing-api-service`.
-2. **DevSecOps Reviewer Persona:**
-   - Audits proposed manifest changes against zero-trust invariants and resource quotas.
-   - Emits surgical fix [`solution-patch.yaml`](scenarios/billing-service-outage/solution-patch.yaml).
-3. **Recovery Verification:**
-   - Applying `kubectl apply -f scenarios/billing-service-outage/solution-patch.yaml` immediately restores all pods to `Running (1/1)` and populates active endpoints.
+# 2. Audit the AWS Terraform PR:
+ocagents run --task "Audit Terraform PR in scenarios/iac-aws-pricing-api/pr-feature-https-listener"
+
+# 3. Audit the GCP Terraform PR:
+ocagents run --task "Audit Terraform PR in scenarios/iac-gcp-secure-enclave/pr-developer-fast-track"
+
+# 4. Audit the Azure Terraform PR:
+ocagents run --task "Audit Terraform PR in scenarios/iac-azure-enterprise-hub-spoke/pr-developer-hotfix"
+```
 
 ---
 
@@ -106,4 +118,3 @@ Check the live status under [`.github/workflows/kind-matrix.yml`](.github/workfl
 * **Reusable Actions:** [open-cloud-agents/pipelines](https://github.com/open-cloud-agents/pipelines)
 * **Author:** Ibrahim Jimoh ([LinkedIn](https://www.linkedin.com/in/ijimoh))
 * **License:** Apache 2.0
-

@@ -1,0 +1,162 @@
+# Terraform apply against the live pricing-api estate.
+#
+# THE APPROVAL GATE IS THE POINT OF THIS WORKFLOW.
+#
+# This job runs in the `production-apply` GitHub environment, which is configured
+# with required reviewers. Nothing applies until a named human clicks approve.
+# That gate is a safety control and a conversation prompt at the same time: when
+# someone requests approval, the reviewer's job is to ask two questions before
+# clicking anything -
+#
+#   1. What exactly am I approving? (which resources change, replace, destroy)
+#   2. What did you check before asking? (which plan, read how)
+#
+# "The plan looked fine" is not an answer to either. If the requester cannot say
+# what the plan replaces, do not approve.
+#
+# The `confirm` input is belt and braces on top of the environment gate: two
+# independent things have to be got right, by two different people, in two
+# different places, before this estate changes.
+
+name: Terraform Apply
+
+run-name: Apply pricing-api estate from ${{ github.ref_name }} (requested by @${{ github.actor }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "apply" to confirm you intend to change the live estate'
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: pricing-api-estate-mutate
+  cancel-in-progress: false
+
+env:
+  # Single place to bump the Terraform version for this workflow. Must match the
+  # version used to produce the plan you are applying.
+  # Quoted so a future bump to e.g. "1.10" is not parsed by YAML as the number 1.1.
+  TERRAFORM_VERSION: "1.15.8"
+
+jobs:
+  # Runs outside the gated environment so a mistyped confirmation fails
+  # immediately, rather than sitting in the reviewer's approval queue.
+  guard:
+    name: Check confirmation input
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate confirmation
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "${CONFIRM}" != "apply" ]; then
+            echo "::error title=Confirmation failed::The confirm input must be exactly 'apply'"
+            echo ""
+            echo "Refusing to continue."
+            echo ""
+            echo "The 'confirm' input must be the literal string: apply"
+            echo "It was not. Nothing has been changed and no approval has been"
+            echo "requested."
+            echo ""
+            echo "Re-run the workflow and type apply (lower case, no quotes, no"
+            echo "surrounding spaces) into the confirmation field."
+            exit 1
+          fi
+          echo "Confirmation accepted. Requesting approval from the production-apply reviewers."
+
+  apply:
+    name: Apply (requires approval)
+    needs: guard
+    runs-on: ubuntu-latest
+    # Required reviewers on this environment are what hold the apply.
+    environment: production-apply
+    steps:
+      - name: Publish pre-apply warning
+        run: |
+          {
+            echo "# APPLYING TO THE LIVE PRICING API ESTATE"
+            echo ""
+            echo "> **This is not a dry run. This changes real infrastructure.**"
+            echo ""
+            echo "## Read before approving"
+            echo ""
+            echo "- This apply **will replace the production database**. Replacement"
+            echo "  means the existing RDS instance is destroyed and a new one is"
+            echo "  created. Any data in it that is not in a snapshot is gone."
+            echo "- Expect the run to take **roughly 15 minutes**, most of it waiting"
+            echo "  on RDS. Do not cancel a part-finished apply - a half-applied"
+            echo "  estate is harder to recover than a finished one."
+            echo "- The estate is unavailable for the duration."
+            echo ""
+            echo "## Reviewer checklist"
+            echo ""
+            echo "Before approving, ask the requester:"
+            echo ""
+            echo "1. What does the plan change, replace and destroy?"
+            echo "2. Which plan did you read, and what did you check in it?"
+            echo ""
+            echo "## Run details"
+            echo ""
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            echo "| Ref | \`${GITHUB_REF_NAME}\` |"
+            echo "| Commit | \`${GITHUB_SHA}\` |"
+            echo "| Requested by | @${GITHUB_ACTOR} |"
+            echo "| Terraform version | \`${TERRAFORM_VERSION}\` |"
+            echo "| Region | \`eu-west-1\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@v4
+
+
+      # One estate per repository: the suffix after the last hyphen in the repository name
+
+      # is the suffix on every resource and the state key.
+
+      - name: Resolve estate
+
+        run: echo "ESTATE=${GITHUB_REPOSITORY##*-}" >> "$GITHUB_ENV"
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: eu-west-1
+          role-to-assume: arn:aws:iam::838029585209:role/gha-deploy-friday-pr-estates
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: terraform init -input=false -backend-config="key=estates/${ESTATE}/terraform.tfstate"
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -input=false -var "name_suffix=${ESTATE}"
+
+      - name: Publish apply result
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          {
+            echo ""
+            echo "## Apply outcome"
+            echo ""
+            if [ "${JOB_STATUS}" = "success" ]; then
+              echo "Apply completed. Run the **Terraform Plan** workflow to confirm the"
+              echo "estate now matches the configuration (a clean plan means it does)."
+            else
+              echo "Apply did **not** complete cleanly. The estate may be partially"
+              echo "changed. Run the **Terraform Plan** workflow to see the current"
+              echo "difference between the estate and the configuration before doing"
+              echo "anything else."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

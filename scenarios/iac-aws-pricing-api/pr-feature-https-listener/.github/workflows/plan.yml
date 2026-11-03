@@ -1,0 +1,199 @@
+# Terraform plan for the pricing-api estate.
+#
+# This is the workflow you run to see what a change would do to the estate. It
+# only ever reads: it runs `terraform validate` and `terraform plan`, and never
+# applies anything. Applying is a separate, approval-gated workflow.
+#
+# It runs automatically on every push to any branch, and you can also run it on
+# demand from the Actions tab ("Run workflow"), against any branch.
+#
+# Where to find the output:
+#   * Job summary  - the plan is rendered at the bottom of the run page, inside a
+#                    collapsed "Show plan output" section.
+#   * PR comment   - if the branch has an open pull request, the same plan is
+#                    posted on it as a comment.
+#   * Artifact     - the raw plan text is attached to the run as "tfplan-text".
+#
+# Note on pull requests: the plan needs AWS credentials via OIDC, which GitHub
+# only issues to workflows running from a branch in this repo. Push branches
+# here rather than working from a fork.
+
+name: Terraform Plan
+
+run-name: Plan pricing-api estate (${{ github.ref_name }})
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "**"
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+# One plan at a time per repository, whatever the branch: every branch plans against the
+# same estate, and a push to two branches at once (or a plan while someone else's runs)
+# should queue rather than fail.
+concurrency:
+  group: pricing-api-plan
+  cancel-in-progress: false
+
+env:
+  # Single place to bump the Terraform version for this workflow. Pinned on
+  # purpose so a plan produced today is reproducible tomorrow.
+  # Quoted so a future bump to e.g. "1.10" is not parsed by YAML as the number 1.1.
+  TERRAFORM_VERSION: "1.15.8"
+
+jobs:
+  plan:
+    name: Validate and plan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # One estate per repository: the suffix after the last hyphen in the repository name
+      # is the suffix on every resource and the state key.
+      - name: Resolve estate
+        run: echo "ESTATE=${GITHUB_REPOSITORY##*-}" >> "$GITHUB_ENV"
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: eu-west-1
+          role-to-assume: arn:aws:iam::838029585209:role/gha-view-friday-pr-estates
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: terraform init -input=false -backend-config="key=estates/${ESTATE}/terraform.tfstate"
+
+      # No continue-on-error anywhere in this job. If validate or plan fails,
+      # the run goes red and you see why. A plan that quietly "passes" while
+      # erroring is worse than no plan at all.
+      - name: Terraform Validate
+        run: terraform validate
+
+      # Refresh is deliberately left ON here. Running with -refresh=false makes the
+      # plan report an in-place update on every pre-existing resource, because the
+      # provider version this branch resolves adds a `region` attribute that is
+      # absent from the stored state. Refreshing populates it from AWS and the noise
+      # disappears. Costs ~30s; worth it for a plan the reviewer has to read.
+      #
+      # Do not "fix" that noise with `apply -refresh-only` -- that writes state the
+      # provider major on `main` cannot read, and every plan from the base branch
+      # would start failing.
+      # -lock=false: a plan only reads state, and the estate's applies hold the lock
+      # themselves. Taking it here would make two plans at once fail, not queue.
+      - name: Terraform Plan
+        run: terraform plan -no-color -out=tfplan -input=false -lock=false -var "name_suffix=${ESTATE}"
+
+      - name: Render plan as text
+        run: terraform show -no-color tfplan > plan.txt
+
+      - name: Publish plan to job summary
+        run: |
+          # $GITHUB_STEP_SUMMARY accepts up to 1 MiB. Trim well short of that so
+          # a very large plan still renders instead of being dropped whole.
+          MAX_BYTES=900000
+          PLAN_BYTES="$(wc -c < plan.txt)"
+
+          {
+            echo "# Terraform Plan"
+            echo ""
+            echo "Root module at the repository root, region \`eu-west-1\`,"
+            echo "Terraform \`${TERRAFORM_VERSION}\`."
+            echo ""
+            echo "<details>"
+            echo "<summary>Show plan output</summary>"
+            echo ""
+            echo '```terraform'
+            if [ "${PLAN_BYTES}" -gt "${MAX_BYTES}" ]; then
+              head -c "${MAX_BYTES}" plan.txt
+              echo ""
+              echo "[... truncated at ${MAX_BYTES} bytes of ${PLAN_BYTES}."
+              echo " Download the full plan from the \"tfplan-text\" artifact on this run. ...]"
+            else
+              cat plan.txt
+            fi
+            echo '```'
+            echo ""
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment plan on the branch's pull request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Only when this branch has an open pull request; a plain push to a
+            // branch with no PR keeps its plan in the job summary.
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              head: `${context.repo.owner}:${context.ref.replace('refs/heads/', '')}`,
+            });
+            if (prs.length === 0) {
+              core.info('No open pull request for this branch; plan is in the job summary.');
+              return;
+            }
+
+            // GitHub rejects comment bodies over 65536 characters.
+            const LIMIT = 65536;
+
+            const plan = fs.readFileSync('plan.txt', 'utf8');
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const head = [
+              '## Terraform Plan',
+              '',
+              `Produced by [workflow run ${context.runId}](${runUrl}).`,
+              '',
+              '<details>',
+              '<summary>Show plan output</summary>',
+              '',
+              '```terraform',
+              '',
+            ].join('\n');
+
+            const tail = ['', '```', '', '</details>', ''].join('\n');
+
+            const notice = [
+              '',
+              '',
+              '[... plan output truncated: the full plan is too long for a GitHub comment.',
+              `Read the complete plan in the job summary of the run linked above, or download`,
+              'the "tfplan-text" artifact. ...]',
+            ].join('\n');
+
+            let body = head + plan + tail;
+
+            if (body.length > LIMIT) {
+              // Leave a little headroom so the notice and fence always survive.
+              const budget = LIMIT - head.length - tail.length - notice.length - 64;
+              const kept = plan.slice(0, Math.max(budget, 0));
+              body = head + kept + notice + tail;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prs[0].number,
+              body,
+            });
+
+      - name: Upload plan text
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-text
+          path: plan.txt
+          if-no-files-found: warn
+          retention-days: 5
