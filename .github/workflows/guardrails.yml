@@ -1,0 +1,21 @@
+name: "Cloud Guardrails & Security Review"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cloud-guardrails:
+    name: "Open Cloud Agents Guardrails Audit"
+    uses: open-cloud-agents/pipelines/.github/workflows/cloud-guardrails.yml@v1
+    with:
+      enable-secret-scan: true
+      enable-iac-audit: true
+      enable-ai-safety: true
+      enable-shell-lint: true

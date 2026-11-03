@@ -1,0 +1,25 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Kubernetes & KinD
+*.kubeconfig
+kind-kubeconfig.*
+.kube/
+
+# Python & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+*.egg-info/
+
+# IDE files
+.vscode/
+.idea/
+
+# Logs & temp
+*.log
+/tmp/
