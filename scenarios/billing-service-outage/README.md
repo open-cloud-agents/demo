@@ -31,7 +31,7 @@ Welcome to the **Open Cloud Agents Incident Response Sandbox**. This scenario co
 Run the sandbox runner to spin up a local KinD cluster and deploy the broken workload:
 
 ```bash
-ocagents sandbox --scenario scenarios/broken-billing-service/ --keep-cluster
+ocagents sandbox --scenario scenarios/billing-service-outage/ --keep-cluster
 ```
 
 Inspect the cluster state to observe the failures live:
@@ -70,7 +70,7 @@ The multi-agent pipeline will:
 Apply the generated fix:
 
 ```bash
-kubectl apply -f scenarios/broken-billing-service/solution-patch.yaml
+kubectl apply -f scenarios/billing-service-outage/solution-patch.yaml
 ```
 
 Wait 5 seconds and verify the health of the namespace:
