@@ -37,3 +37,4 @@ jobs:
           kubectl apply --server-side --dry-run=server -f scenarios/billing-service-outage/solution-patch.yaml
           kubectl apply -f scenarios/billing-service-outage/solution-patch.yaml
           kubectl get pods,svc,endpoints -n demo-billing
+
